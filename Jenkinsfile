@@ -19,7 +19,7 @@ pipeline {
             steps {
                 git(
                     branch: 'main',
-                    url: 'https://github.com/MohamedOsama911/iti-java-jenkins-task.git',
+                    url: 'https://github.com/MohamedOsama911/iti_java_jenkins_practice.git',
                     credentialsId: env.GITHUB_CREDS_ID
                 )
             }
