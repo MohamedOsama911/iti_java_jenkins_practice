@@ -2,14 +2,15 @@ pipeline {
     agent any
 
     tools {
-        maven 'mvn-3-5-4'  // Make sure this matches your Jenkins Maven installation name
+        maven 'mvn-3-5-4'
     }
 
     environment {
-        IMAGE_NUM = "${BUILD_NUMBER}"          
-        GITHUB_CREDS = credentials("github")   // Your GitHub token credential ID
-        DOCKER_CREDS = credentials("docker")   // Your Docker token credential ID
-        IMAGE_NAME = "mohamedosamaonmac/iti-java-app"  // Your Docker Hub username/repo
+        // Use your Docker Hub username and the desired image name
+        IMAGE_NAME = "mohamedosamaonmac/iti-java-app"
+        // The Jenkins credential IDs you created
+        DOCKER_HUB_CREDS_ID  = 'docker'
+        GITHUB_CREDS_ID      = 'github'
     }
 
     stages {
@@ -18,53 +19,47 @@ pipeline {
                 git(
                     branch: 'main',
                     url: 'https://github.com/MohamedOsama911/iti-java-jenkins-task.git',
-                    credentialsId: 'github'
+                    credentialsId: env.GITHUB_CREDS_ID
                 )
             }
         }
 
-        stage("Build App") {
+        stage("Build & Test Application") {
             steps {
-                script {
-                    mvnBuild("clean package")
+                // This single command compiles, runs tests, and packages the app
+                sh 'mvn clean package'
+            }
+            post {
+                // Best practice: Always archive test results for viewing in Jenkins
+                always {
+                    junit 'target/surefire-reports/*.xml'
                 }
             }
         }
 
-        stage("Test App") {
+        stage("Archive Artifact") {
             steps {
-                script {
-                    mvnTest()
-                }
-            }
-        }
-
-        stage("Archive Jar") {
-            steps {
-                archiveArtifacts artifacts: 'target/*.jar', followSymlinks: false
+                archiveArtifacts artifacts: 'target/*.jar', fingerprint: true
             }
         }
 
         stage("Build Docker Image") {
             steps {
-                script {
-                    dockerBuild("${IMAGE_NAME}", "v${IMAGE_NUM}")
-                }
+                // FIX 1: Use the absolute path to Docker to permanently solve "command not found"
+                sh "/usr/local/bin/docker build -t ${env.IMAGE_NAME}:${env.BUILD_NUMBER} ."
             }
         }
 
-        stage("Docker Login") {
+        stage("Login & Push Docker Image") {
             steps {
-                script {
-                    dockerLoginWithToken("mohamedosamaonmac", "${DOCKER_CREDS}")
-                }
-            }
-        }
-
-        stage("Docker Push") {
-            steps {
-                script {
-                    dockerPush("${IMAGE_NAME}", "v${IMAGE_NUM}")
+                // FIX 2: Use the secure withCredentials block for your Docker token
+                withCredentials([usernamePassword(credentialsId: env.DOCKER_HUB_CREDS_ID, usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                    
+                    // Use the absolute path here as well for login
+                    sh "echo ${DOCKER_PASS} | /usr/local/bin/docker login -u ${DOCKER_USER} --password-stdin"
+                    
+                    // And here for the push
+                    sh "/usr/local/bin/docker push ${env.IMAGE_NAME}:${env.BUILD_NUMBER}"
                 }
             }
         }
@@ -76,35 +71,10 @@ pipeline {
         }
         success {
             echo "✅ Build & Push successful!"
-            echo "🐳 Docker image: ${IMAGE_NAME}:v${IMAGE_NUM}"
+            echo "🐳 Docker image: ${env.IMAGE_NAME}:${env.BUILD_NUMBER}"
         }
         failure {
             echo "❌ Build failed!"
         }
     }
-}
-
-// Maven build function
-def mvnBuild(option) {
-    sh "mvn ${option}"
-}
-
-// Maven test function
-def mvnTest() {
-    sh "mvn test"
-}
-
-// Docker login using Access Token
-def dockerLoginWithToken(username, token) {
-    sh "echo ${token} | docker login -u ${username} --password-stdin"
-}
-
-// Docker build
-def dockerBuild(imageName, imageTag) {
-    sh "docker build -t ${imageName}:${imageTag} ."
-}
-
-// Docker push
-def dockerPush(imageName, imageTag) {
-    sh "docker push ${imageName}:${imageTag}"
 }
