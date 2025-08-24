@@ -6,10 +6,11 @@ pipeline {
     }
 
     environment {
-        // Use your Docker Hub username and the desired image name
-        IMAGE_NAME = "mohamedosamaonmac/iti-java-app"
+        // Your Docker Hub username and desired image name
+        DOCKER_USERNAME      = 'mohamedosamaonmac'
+        IMAGE_NAME           = "${DOCKER_USERNAME}/iti-java-app"
         // The Jenkins credential IDs you created
-        DOCKER_HUB_CREDS_ID  = 'docker'
+        DOCKER_TOKEN_CREDS_ID = 'docker' // This is your 'Secret text' credential
         GITHUB_CREDS_ID      = 'github'
     }
 
@@ -26,11 +27,9 @@ pipeline {
 
         stage("Build & Test Application") {
             steps {
-                // This single command compiles, runs tests, and packages the app
                 sh 'mvn clean package'
             }
             post {
-                // Best practice: Always archive test results for viewing in Jenkins
                 always {
                     junit 'target/surefire-reports/*.xml'
                 }
@@ -45,20 +44,19 @@ pipeline {
 
         stage("Build Docker Image") {
             steps {
-                // FIX 1: Use the absolute path to Docker to permanently solve "command not found"
                 sh "/usr/local/bin/docker build -t ${env.IMAGE_NAME}:${env.BUILD_NUMBER} ."
             }
         }
 
         stage("Login & Push Docker Image") {
             steps {
-                // FIX 2: Use the secure withCredentials block for your Docker token
-                withCredentials([usernamePassword(credentialsId: env.DOCKER_HUB_CREDS_ID, usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                // *** THIS BLOCK IS NOW CORRECT FOR 'SECRET TEXT' ***
+                // It loads the secret text into a variable named DOCKER_ACCESS_TOKEN
+                withCredentials([string(credentialsId: env.DOCKER_TOKEN_CREDS_ID, variable: 'DOCKER_ACCESS_TOKEN')]) {
                     
-                    // Use the absolute path here as well for login
-                    sh "echo ${DOCKER_PASS} | /usr/local/bin/docker login -u ${DOCKER_USER} --password-stdin"
+                    // We use the variable here and provide the username directly
+                    sh "echo ${DOCKER_ACCESS_TOKEN} | /usr/local/bin/docker login -u ${env.DOCKER_USERNAME} --password-stdin"
                     
-                    // And here for the push
                     sh "/usr/local/bin/docker push ${env.IMAGE_NAME}:${env.BUILD_NUMBER}"
                 }
             }
